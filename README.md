@@ -11,7 +11,7 @@ and an open-weight language model running directly in your browser.
 Open this on your phone or computer:
 
 ```
-https://<your-username>.github.io/wolf_companion/chat.html
+https://<your-username>.github.io/wolf_companion/
 ```
 
 (Replace `<your-username>` with your actual GitHub username once Pages is enabled.)
@@ -22,7 +22,7 @@ instantly — and even offline.
 
 ## How it works
 
-- The chat interface (`chat.html`) runs a language model directly in your
+- The chat interface (`index.html`) runs a language model directly in your
   browser using [WebLLM](https://github.com/mlc-ai/web-llm), which uses
   WebGPU to run inference on your device's own GPU.
 - Nothing is sent to any server. Your conversations never leave your device.
@@ -34,7 +34,7 @@ instantly — and even offline.
 
 | File            | Purpose                                          |
 |-----------------|---------------------------------------------------|
-| `chat.html`     | The main app — chat UI + on-device model loading  |
+| `index.html`     | The main app — chat UI + on-device model loading  |
 | `sw.js`         | Service worker, enables offline support           |
 | `manifest.json` | PWA config (name, icons, display mode)            |
 | `icon-192.png`  | App icon (small)                                  |
@@ -50,7 +50,7 @@ instantly — and even offline.
 This is an early prototype. Known limitations:
 
 - No persistent memory between sessions yet (conversation resets on reload).
-- Personality is defined by a single system prompt inside `chat.html`.
+- Personality is defined by a single system prompt inside `index.html`.
 - First-load download time (~1-3 min) is a known UX tradeoff of running
   the model fully on-device instead of via a cloud API.
 
