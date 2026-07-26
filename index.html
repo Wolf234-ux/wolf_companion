@@ -250,7 +250,8 @@ import {
   deleteUser, reauthenticateWithCredential, reauthenticateWithPopup, EmailAuthProvider
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  getFirestore, doc, getDoc, setDoc, deleteDoc
+  initializeFirestore, persistentLocalCache, persistentSingleTabManager,
+  doc, getDoc, setDoc, deleteDoc
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { Wllama } from "https://cdn.jsdelivr.net/npm/@wllama/wllama@2/esm/index.js";
 
@@ -266,7 +267,13 @@ const firebaseConfig = {
 };
 const fbApp = initializeApp(firebaseConfig);
 const auth = getAuth(fbApp);
-const db = getFirestore(fbApp);
+// Persistent offline cache: writes/reads made while offline are queued
+// locally and auto-sync once connectivity returns, instead of failing
+// outright. This is what actually makes "usable offline" true rather
+// than just "the model still runs offline."
+const db = initializeFirestore(fbApp, {
+  localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() })
+});
 
 // ---------- DOM refs ----------
 const authScreen = document.getElementById('authScreen');
@@ -614,6 +621,30 @@ window.addEventListener('online', () => {
     initModel(1);
   }
 });
+
+// Resuming from background (switching back into this tab/app) is the
+// other common trigger for a stuck failure state — the network was often
+// just briefly unavailable while the device woke up, not genuinely down.
+// If we're sitting on a failure when the app becomes visible again, retry
+// automatically instead of making the person tap the button.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && !modelReady && retryBtn.style.display === 'inline-block') {
+    initModel(1);
+  }
+});
+
+// If a new service worker version has taken over (i.e. we just deployed a
+// fix), reload once automatically so the person is never stuck running
+// stale JS after a background/foreground cycle -- this is the other half
+// of the fix for the stale-CSP-after-resume bug.
+if ('serviceWorker' in navigator) {
+  let hasReloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hasReloaded) return;
+    hasReloaded = true;
+    location.reload();
+  });
+}
 
 window.sendMessage = async function () {
   const now = Date.now();
