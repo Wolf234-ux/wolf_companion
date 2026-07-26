@@ -180,7 +180,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/fireba
 import {
   getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
   onAuthStateChanged, signOut, sendPasswordResetEmail,
-  GoogleAuthProvider, signInWithPopup
+  GoogleAuthProvider, signInWithRedirect, getRedirectResult
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc
@@ -303,14 +303,20 @@ window.handleGoogleSignIn = async function () {
   authError.textContent = '';
   const provider = new GoogleAuthProvider();
   try {
-    await signInWithPopup(auth, provider);
-    // onAuthStateChanged takes it from here
+    await signInWithRedirect(auth, provider);
+    // Page will redirect to Google, then back here.
+    // getRedirectResult() below (run on load) picks it up.
   } catch (err) {
-    if (err.code !== 'auth/popup-closed-by-user') {
-      authError.textContent = friendlyAuthError(err.code) || 'Google sign-in failed. Please try again.';
-    }
+    authError.textContent = friendlyAuthError(err.code) || 'Google sign-in failed. Please try again.';
   }
 };
+
+// Handle the return trip from Google's sign-in redirect
+getRedirectResult(auth).catch((err) => {
+  if (err && err.code) {
+    authError.textContent = friendlyAuthError(err.code);
+  }
+});
 
 // ---------- Chat UI helpers ----------
 function addMessage(text, cls) {
