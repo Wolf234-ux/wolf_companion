@@ -8,6 +8,15 @@
 <meta name="theme-color" content="#14161c">
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdn.jsdelivr.net;
+  style-src 'self' 'unsafe-inline';
+  connect-src 'self' https://*.googleapis.com https://*.google.com https://*.firebaseio.com https://*.firebaseapp.com https://cdn.jsdelivr.net https://huggingface.co https://cdn-lfs.huggingface.co https://cdn-lfs-us-1.huggingface.co;
+  img-src 'self' data: https:;
+  worker-src 'self' blob:;
+  frame-src https://wolf-companion.firebaseapp.com https://accounts.google.com;
+">
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; margin: 0; }
@@ -89,6 +98,8 @@
     font-size: 14.5px;
   }
   #googleSignInBtn:active { background: #23262e; }
+  #tosNote { text-align: center; color: #4a4e59; font-size: 11px; margin-top: 4px; }
+  #tosNote a { color: #6d94ff; text-decoration: none; }
 
   /* ---------- Chat screen ---------- */
   #chatScreen { flex: 1; display: none; flex-direction: column; overflow: hidden; }
@@ -104,12 +115,18 @@
   }
   #headerTitle { font-weight: 700; font-size: 17px; }
   #status { font-size: 12.5px; color: #7d8290; margin-top: 6px; }
-  #signOutBtn {
+  #syncWarning { font-size: 11.5px; color: #f0ad4e; margin-top: 3px; display: none; }
+  #headerBtns { display: flex; gap: 6px; flex-shrink: 0; }
+  #signOutBtn, #accountBtn {
     background: none; border: 1px solid #2a2d36; color: #9aa0ac;
     border-radius: 8px; padding: 6px 10px; font-size: 12px;
   }
   #loadBar { height: 4px; background: #23262e; border-radius: 2px; margin-top: 8px; overflow: hidden; }
   #loadFill { height: 100%; width: 0%; background: #3b6fed; transition: width 0.2s; }
+  #retryBtn {
+    display: none; margin-top: 8px; padding: 8px 14px; border-radius: 10px; border: none;
+    background: #3b6fed; color: white; font-weight: 600; font-size: 13px;
+  }
   #chat {
     flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
     padding: 16px 12px; display: flex; flex-direction: column; gap: 10px;
@@ -137,6 +154,26 @@
     background: #3b6fed; color: white; font-size: 18px; flex-shrink: 0;
   }
   #sendBtn:disabled { background: #2a2d36; }
+
+  /* ---------- Account modal ---------- */
+  #accountModal {
+    display: none; position: fixed; inset: 0; background: #000000aa;
+    align-items: flex-end; z-index: 50;
+  }
+  #accountModal.open { display: flex; }
+  #accountSheet {
+    background: #14161c; width: 100%; border-radius: 18px 18px 0 0;
+    padding: 20px calc(env(safe-area-inset-right,0px) + 20px) calc(env(safe-area-inset-bottom,0px) + 20px) calc(env(safe-area-inset-left,0px) + 20px);
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  #accountSheet h3 { margin: 0 0 4px; font-size: 17px; }
+  #accountSheet p { margin: 0; font-size: 13px; color: #9aa0ac; line-height: 1.5; }
+  .sheetBtn {
+    padding: 13px; border-radius: 12px; border: 1px solid #2a2d36;
+    background: #1c1f27; color: white; font-size: 14.5px; font-weight: 600;
+  }
+  #deleteAccountBtn { border-color: #7f1d1d; color: #f87171; }
+  #closeSheetBtn { background: none; border: none; color: #7d8290; font-size: 13px; padding: 6px; }
 </style>
 </head>
 <body>
@@ -145,8 +182,8 @@
   <div id="authScreen">
     <div id="authTitle">Your Companion</div>
     <div id="authSubtitle" id="authModeText">Sign in to continue your conversations across devices.</div>
-    <input id="emailInput" type="email" placeholder="Email" autocomplete="email" />
-    <input id="passwordInput" type="password" placeholder="Password" autocomplete="current-password" />
+    <input id="emailInput" type="email" placeholder="Email" autocomplete="email" maxlength="254" />
+    <input id="passwordInput" type="password" placeholder="Password" autocomplete="current-password" maxlength="128" />
     <div id="authError"></div>
     <button id="authSubmit" onclick="handleAuthSubmit()">Sign In</button>
     <div id="orDivider">or</div>
@@ -156,6 +193,7 @@
     </button>
     <div id="authToggle" onclick="toggleAuthMode()">Don't have an account? <span>Sign up</span></div>
     <div id="forgotPassword" onclick="handleForgotPassword()">Forgot password?</div>
+    <div id="tosNote">By continuing you agree to our <a href="TOS.md">Terms</a> &amp; <a href="PRIVACY.md">Privacy Policy</a>.</div>
   </div>
 
   <!-- CHAT SCREEN -->
@@ -164,14 +202,30 @@
       <div>
         <div id="headerTitle">Your Companion</div>
         <div id="status">Loading model (~1GB, one-time)...</div>
+        <div id="syncWarning">⚠ Last message may not have synced. Check your connection.</div>
         <div id="loadBar"><div id="loadFill"></div></div>
+        <button id="retryBtn" onclick="manualRetryLoad()">Retry loading</button>
       </div>
-      <button id="signOutBtn" onclick="handleSignOut()">Sign out</button>
+      <div id="headerBtns">
+        <button id="accountBtn" onclick="openAccountSheet()">Account</button>
+        <button id="signOutBtn" onclick="handleSignOut()">Sign out</button>
+      </div>
     </div>
     <div id="chat"></div>
     <div id="inputBar">
-      <textarea id="userInput" placeholder="Loading..." rows="1" disabled></textarea>
+      <textarea id="userInput" placeholder="Loading..." rows="1" disabled maxlength="4000"></textarea>
       <button id="sendBtn" onclick="sendMessage()" disabled>➤</button>
+    </div>
+  </div>
+
+  <!-- ACCOUNT SHEET -->
+  <div id="accountModal" onclick="if(event.target===this) closeAccountSheet()">
+    <div id="accountSheet">
+      <h3>Account</h3>
+      <p id="accountEmailText"></p>
+      <button class="sheetBtn" id="deleteAccountBtn" onclick="handleDeleteAccount()">Delete my account &amp; data</button>
+      <p>This permanently deletes your conversation history and sign-in — it cannot be undone.</p>
+      <button id="closeSheetBtn" onclick="closeAccountSheet()">Close</button>
     </div>
   </div>
 
@@ -180,10 +234,11 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/fireba
 import {
   getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
   onAuthStateChanged, signOut, sendPasswordResetEmail,
-  GoogleAuthProvider, signInWithPopup
+  GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult,
+  deleteUser, reauthenticateWithCredential, reauthenticateWithPopup, EmailAuthProvider
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  getFirestore, doc, getDoc, setDoc
+  getFirestore, doc, getDoc, setDoc, deleteDoc
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { Wllama } from "https://cdn.jsdelivr.net/npm/@wllama/wllama@2/esm/index.js";
 
@@ -216,6 +271,11 @@ const inputEl = document.getElementById('userInput');
 const sendBtn = document.getElementById('sendBtn');
 const statusEl = document.getElementById('status');
 const loadFill = document.getElementById('loadFill');
+const loadBar = document.getElementById('loadBar');
+const retryBtn = document.getElementById('retryBtn');
+const syncWarning = document.getElementById('syncWarning');
+const accountModal = document.getElementById('accountModal');
+const accountEmailText = document.getElementById('accountEmailText');
 
 const MODEL_URL = "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf";
 const CONFIG_PATHS = {
@@ -224,10 +284,22 @@ const CONFIG_PATHS = {
 };
 const SYSTEM_PROMPT = "You are a warm, witty, emotionally supportive companion. Talk like a real friend - casual, caring, a bit playful. Keep responses conversational length, not essays.";
 
+// ---------- Memory / context limits (foundation fix: bounded growth) ----------
+const KEEP_RAW_MESSAGES = 40;   // max raw user+assistant messages kept & stored in Firestore
+const CONTEXT_SEND_MESSAGES = 12; // how many recent messages are actually sent to the model each turn
+const SUMMARIZE_TRIGGER = 40;   // when raw count exceeds this, older ones get summarized into `profile`
+const PROFILE_MAX_CHARS = 1500; // rolling profile summary is capped so it can't grow forever
+const MAX_INPUT_CHARS = 4000;
+const MIN_SEND_INTERVAL_MS = 700; // basic client-side throttle
+const MODEL_LOAD_MAX_ATTEMPTS = 3;
+
 let isSignUpMode = false;
 let wllama;
 let currentUser = null;
-let history = [{ role: "system", content: SYSTEM_PROMPT }];
+let history = [{ role: "system", content: SYSTEM_PROMPT }]; // full raw record (capped)
+let profile = ""; // rolling long-term memory summary
+let lastSendTs = 0;
+let modelReady = false;
 
 // ---------- Auth mode toggle ----------
 window.toggleAuthMode = function () {
@@ -274,11 +346,15 @@ function friendlyAuthError(code) {
     'auth/wrong-password': 'Incorrect password.',
     'auth/invalid-credential': 'Incorrect email or password.',
     'auth/too-many-requests': 'Too many attempts. Please wait a moment and try again.',
+    'auth/requires-recent-login': 'For security, please sign in again to confirm this.',
+    'auth/popup-blocked': 'Your browser blocked the sign-in popup. Trying an alternate method...',
+    'auth/network-request-failed': 'Network error. Check your connection and try again.',
   };
   return map[code] || 'Something went wrong. Please try again.';
 }
 
 window.handleSignOut = async function () {
+  if (!confirm('Sign out of Your Companion?')) return;
   await signOut(auth);
 };
 
@@ -299,16 +375,80 @@ window.handleForgotPassword = async function () {
   }
 };
 
+// Popup first (best UX), fall back to redirect if the environment blocks popups
+// (common in Android in-app browsers). This fixes the popup/redirect mismatch
+// between the code and TODO.md.
 window.handleGoogleSignIn = async function () {
   authError.style.color = '';
   authError.textContent = '';
   const provider = new GoogleAuthProvider();
   try {
     await signInWithPopup(auth, provider);
-    // onAuthStateChanged takes it from here
   } catch (err) {
-    if (err.code !== 'auth/popup-closed-by-user') {
-      authError.textContent = (friendlyAuthError(err.code) || 'Google sign-in failed.') + ' (' + err.code + ')';
+    if (err.code === 'auth/popup-closed-by-user') return;
+    if (err.code === 'auth/popup-blocked' || err.code === 'auth/operation-not-supported-in-this-environment' || err.code === 'auth/cancelled-popup-request') {
+      try {
+        await signInWithRedirect(auth, provider);
+      } catch (err2) {
+        authError.textContent = friendlyAuthError(err2.code) + ' (' + err2.code + ')';
+      }
+    } else {
+      authError.textContent = friendlyAuthError(err.code) + ' (' + err.code + ')';
+    }
+  }
+};
+
+// Must be called on load to complete a redirect-based sign-in.
+getRedirectResult(auth).catch((err) => {
+  if (err && err.code) {
+    authError.textContent = friendlyAuthError(err.code) + ' (' + err.code + ')';
+  }
+});
+
+// ---------- Account sheet ----------
+window.openAccountSheet = function () {
+  accountEmailText.textContent = currentUser ? ('Signed in as ' + currentUser.email) : '';
+  accountModal.classList.add('open');
+};
+window.closeAccountSheet = function () {
+  accountModal.classList.remove('open');
+};
+
+async function reauthenticate() {
+  const providerId = currentUser.providerData[0]?.providerId;
+  if (providerId === 'google.com') {
+    await reauthenticateWithPopup(currentUser, new GoogleAuthProvider());
+  } else {
+    const pwd = prompt('For security, please re-enter your password to confirm:');
+    if (!pwd) throw { code: 'cancelled' };
+    const cred = EmailAuthProvider.credential(currentUser.email, pwd);
+    await reauthenticateWithCredential(currentUser, cred);
+  }
+}
+
+window.handleDeleteAccount = async function () {
+  if (!currentUser) return;
+  const ok = confirm('This permanently deletes your account and all conversation history. This cannot be undone. Continue?');
+  if (!ok) return;
+  const uid = currentUser.uid;
+  try {
+    await deleteDoc(doc(db, 'conversations', uid));
+    await deleteUser(currentUser);
+    closeAccountSheet();
+  } catch (err) {
+    if (err.code === 'auth/requires-recent-login') {
+      try {
+        await reauthenticate();
+        await deleteDoc(doc(db, 'conversations', uid));
+        await deleteUser(currentUser);
+        closeAccountSheet();
+      } catch (err2) {
+        if (err2.code !== 'cancelled') {
+          alert('Could not delete account: ' + (friendlyAuthError(err2.code) || err2.message));
+        }
+      }
+    } else {
+      alert('Could not delete account: ' + (friendlyAuthError(err.code) || err.message));
     }
   }
 };
@@ -317,7 +457,7 @@ window.handleGoogleSignIn = async function () {
 function addMessage(text, cls) {
   const div = document.createElement('div');
   div.className = 'msg ' + cls;
-  div.textContent = text;
+  div.textContent = text; // textContent only — never innerHTML with user/model content (XSS guard)
   chatEl.appendChild(div);
   chatEl.scrollTop = chatEl.scrollHeight;
   return div;
@@ -335,29 +475,92 @@ function renderHistory() {
 async function loadMemory(uid) {
   try {
     const snap = await getDoc(doc(db, 'conversations', uid));
-    if (snap.exists() && Array.isArray(snap.data().messages)) {
-      history = snap.data().messages;
-      if (history.length === 0 || history[0].role !== 'system') {
-        history.unshift({ role: 'system', content: SYSTEM_PROMPT });
+    if (snap.exists()) {
+      const data = snap.data();
+      if (Array.isArray(data.messages)) {
+        history = data.messages;
+        if (history.length === 0 || history[0].role !== 'system') {
+          history.unshift({ role: 'system', content: SYSTEM_PROMPT });
+        }
       }
+      if (typeof data.profile === 'string') profile = data.profile;
     }
   } catch (err) {
     console.warn('Could not load memory:', err);
+    showSyncWarning();
   }
 }
 
-async function saveMemory(uid) {
+async function saveMemory(uid, retried) {
   try {
-    await setDoc(doc(db, 'conversations', uid), { messages: history, updatedAt: Date.now() });
+    await setDoc(doc(db, 'conversations', uid), {
+      messages: history,
+      profile,
+      updatedAt: Date.now()
+    });
+    hideSyncWarning();
   } catch (err) {
     console.warn('Could not save memory:', err);
+    if (!retried) {
+      setTimeout(() => saveMemory(uid, true), 1500);
+    } else {
+      showSyncWarning();
+    }
   }
 }
 
-// ---------- Model loading ----------
-async function initModel() {
+function showSyncWarning() { syncWarning.style.display = 'block'; }
+function hideSyncWarning() { syncWarning.style.display = 'none'; }
+
+// ---------- Bounded memory: cap raw history + roll old messages into `profile` ----------
+// This is the fix for unbounded context growth (TODO: cap history) and doubles
+// as the "memory summary" personalization feature (TODO: memory summary).
+async function maybeSummarizeOldMessages() {
+  const nonSystem = history.slice(1);
+  if (nonSystem.length <= SUMMARIZE_TRIGGER || !wllama || !modelReady) return;
+
+  const overflowCount = nonSystem.length - KEEP_RAW_MESSAGES;
+  if (overflowCount <= 0) return;
+
+  const toSummarize = nonSystem.slice(0, overflowCount);
+  const keep = nonSystem.slice(overflowCount);
+
   try {
-    wllama = new Wllama(CONFIG_PATHS);
+    const transcript = toSummarize.map(m => `${m.role}: ${m.content}`).join('\n').slice(0, 6000);
+    const prompt = await wllama.formatChat([
+      { role: 'system', content: 'Extract lasting facts about the user from this chat excerpt: name, interests, ongoing topics, preferences, important context. Max 5 short bullet points. No chit-chat, no filler.' },
+      { role: 'user', content: transcript }
+    ], true);
+    let summary = '';
+    await wllama.createCompletion(prompt, {
+      nPredict: 150,
+      sampling: { temp: 0.3 },
+      onNewToken: (t, p, c) => { summary = c; }
+    });
+    profile = (profile + '\n' + summary.trim()).trim().slice(-PROFILE_MAX_CHARS);
+  } catch (err) {
+    console.warn('Summary step failed, dropping oldest messages without summarizing:', err);
+  }
+
+  history = [{ role: 'system', content: SYSTEM_PROMPT }, ...keep];
+}
+
+function buildContextForModel() {
+  const systemContent = profile
+    ? `${SYSTEM_PROMPT}\n\nThings you remember about this person:\n${profile}`
+    : SYSTEM_PROMPT;
+  const recent = history.slice(1).slice(-CONTEXT_SEND_MESSAGES);
+  return [{ role: 'system', content: systemContent }, ...recent];
+}
+
+// ---------- Model loading (with retry + backoff — fixes the "stuck on network error" bug) ----------
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function initModel(attempt = 1) {
+  retryBtn.style.display = 'none';
+  loadBar.style.display = 'block';
+  try {
+    if (!wllama) wllama = new Wllama(CONFIG_PATHS);
     await wllama.loadModelFromUrl(MODEL_URL, {
       progressCallback: (p) => {
         const pct = Math.round((p.loaded / p.total) * 100);
@@ -365,7 +568,8 @@ async function initModel() {
         statusEl.textContent = `Downloading model... ${pct}%`;
       }
     });
-    document.getElementById('loadBar').style.display = 'none';
+    loadBar.style.display = 'none';
+    modelReady = true;
     statusEl.textContent = 'Ready — your conversations sync to your account.';
     inputEl.disabled = false;
     sendBtn.disabled = false;
@@ -375,13 +579,35 @@ async function initModel() {
       addMessage('Model loaded. Signed in as ' + currentUser.email + '.', 'sys');
     }
   } catch (err) {
+    if (attempt < MODEL_LOAD_MAX_ATTEMPTS) {
+      statusEl.textContent = `Load failed, retrying (${attempt}/${MODEL_LOAD_MAX_ATTEMPTS})...`;
+      await sleep(1500 * attempt);
+      wllama = undefined;
+      return initModel(attempt + 1);
+    }
+    loadBar.style.display = 'none';
     statusEl.textContent = 'Failed to load model: ' + err.message;
+    retryBtn.style.display = 'inline-block';
   }
 }
 
+window.manualRetryLoad = function () {
+  initModel(1);
+};
+
+window.addEventListener('online', () => {
+  if (!modelReady && retryBtn.style.display === 'inline-block') {
+    initModel(1);
+  }
+});
+
 window.sendMessage = async function () {
-  const text = inputEl.value.trim();
-  if (!text || !wllama || !currentUser) return;
+  const now = Date.now();
+  if (now - lastSendTs < MIN_SEND_INTERVAL_MS) return;
+  const text = inputEl.value.trim().slice(0, MAX_INPUT_CHARS);
+  if (!text || !wllama || !modelReady || !currentUser) return;
+  lastSendTs = now;
+
   inputEl.value = '';
   inputEl.style.height = 'auto';
   addMessage(text, 'user');
@@ -392,7 +618,11 @@ window.sendMessage = async function () {
   const botDiv = addMessage('...', 'bot');
 
   try {
-    const prompt = await wllama.formatChat(history, true);
+    const contextMessages = buildContextForModel();
+    if (!contextMessages.some(m => m === history[history.length - 1])) {
+      contextMessages.push(history[history.length - 1]);
+    }
+    const prompt = await wllama.formatChat(contextMessages, true);
     let reply = '';
     await wllama.createCompletion(prompt, {
       nPredict: 300,
@@ -403,7 +633,8 @@ window.sendMessage = async function () {
         chatEl.scrollTop = chatEl.scrollHeight;
       }
     });
-    history.push({ role: 'assistant', content: reply });
+    history.push({ role: 'assistant', content: reply || '(empty response)' });
+    await maybeSummarizeOldMessages();
     await saveMemory(currentUser.uid);
   } catch (err) {
     botDiv.textContent = 'Error generating a reply: ' + err.message;
@@ -436,8 +667,10 @@ onAuthStateChanged(auth, async (user) => {
     else renderHistory();
   } else {
     currentUser = null;
+    modelReady = false;
     authScreen.classList.remove('hidden');
     chatScreen.classList.remove('visible');
+    accountModal.classList.remove('open');
     emailInput.value = '';
     passwordInput.value = '';
   }
