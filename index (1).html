@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Companion</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#14161c">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, Roboto, sans-serif;
+    background: #0d0f14;
+    color: #eee;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ---------- Auth screen ---------- */
+  #authScreen {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 24px calc(env(safe-area-inset-right,0px) + 24px) 24px calc(env(safe-area-inset-left,0px) + 24px);
+    gap: 14px;
+  }
+  #authScreen.hidden { display: none; }
+  #authTitle { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  #authSubtitle { font-size: 13.5px; color: #7d8290; margin-bottom: 10px; }
+  #authScreen input {
+    padding: 13px 15px;
+    border-radius: 12px;
+    border: 1px solid #2a2d36;
+    background: #1c1f27;
+    color: white;
+    font-size: 15.5px;
+  }
+  #authScreen input:focus { outline: 2px solid #3b6fed44; }
+  #authError {
+    color: #f87171;
+    font-size: 13px;
+    min-height: 16px;
+  }
+  #authSubmit {
+    padding: 13px;
+    border-radius: 12px;
+    border: none;
+    background: #3b6fed;
+    color: white;
+    font-weight: 600;
+    font-size: 15.5px;
+  }
+  #authSubmit:disabled { background: #2a2d36; }
+  #authToggle {
+    text-align: center;
+    color: #7d8290;
+    font-size: 13.5px;
+    margin-top: 6px;
+  }
+  #authToggle span { color: #6d94ff; }
+  #forgotPassword {
+    text-align: center;
+    color: #6d94ff;
+    font-size: 13px;
+    margin-top: -4px;
+  }
+  #orDivider {
+    text-align: center;
+    color: #4a4e59;
+    font-size: 12px;
+    margin: 2px 0;
+  }
+  #googleSignInBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 13px;
+    border-radius: 12px;
+    border: 1px solid #2a2d36;
+    background: #1c1f27;
+    color: white;
+    font-weight: 600;
+    font-size: 14.5px;
+  }
+  #googleSignInBtn:active { background: #23262e; }
+
+  /* ---------- Chat screen ---------- */
+  #chatScreen { flex: 1; display: none; flex-direction: column; overflow: hidden; }
+  #chatScreen.visible { display: flex; }
+  #header {
+    padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px 12px;
+    background: #14161c;
+    border-bottom: 1px solid #23262e;
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+  #headerTitle { font-weight: 700; font-size: 17px; }
+  #status { font-size: 12.5px; color: #7d8290; margin-top: 6px; }
+  #signOutBtn {
+    background: none; border: 1px solid #2a2d36; color: #9aa0ac;
+    border-radius: 8px; padding: 6px 10px; font-size: 12px;
+  }
+  #loadBar { height: 4px; background: #23262e; border-radius: 2px; margin-top: 8px; overflow: hidden; }
+  #loadFill { height: 100%; width: 0%; background: #3b6fed; transition: width 0.2s; }
+  #chat {
+    flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 16px 12px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .msg {
+    max-width: 82%; padding: 11px 15px; border-radius: 16px;
+    line-height: 1.45; white-space: pre-wrap; font-size: 15.5px; word-wrap: break-word;
+  }
+  .user { align-self: flex-end; background: #3b6fed; color: white; border-bottom-right-radius: 5px; }
+  .bot { align-self: flex-start; background: #1e222b; border-bottom-left-radius: 5px; }
+  .sys { align-self: center; color: #7d8290; font-size: 13px; text-align: center; max-width: 90%; }
+  #inputBar {
+    display: flex; align-items: flex-end; gap: 8px;
+    padding: 10px 12px calc(env(safe-area-inset-bottom, 0px) + 10px);
+    background: #14161c; border-top: 1px solid #23262e; flex-shrink: 0;
+  }
+  #userInput {
+    flex: 1; padding: 12px 14px; border-radius: 20px; border: none;
+    background: #1c1f27; color: white; font-size: 15.5px; resize: none;
+    max-height: 100px; font-family: inherit;
+  }
+  #userInput:disabled { opacity: 0.5; }
+  #sendBtn {
+    width: 44px; height: 44px; border-radius: 50%; border: none;
+    background: #3b6fed; color: white; font-size: 18px; flex-shrink: 0;
+  }
+  #sendBtn:disabled { background: #2a2d36; }
+</style>
+</head>
+<body>
+
+  <!-- AUTH SCREEN -->
+  <div id="authScreen">
+    <div id="authTitle">Your Companion</div>
+    <div id="authSubtitle" id="authModeText">Sign in to continue your conversations across devices.</div>
+    <input id="emailInput" type="email" placeholder="Email" autocomplete="email" />
+    <input id="passwordInput" type="password" placeholder="Password" autocomplete="current-password" />
+    <div id="authError"></div>
+    <button id="authSubmit" onclick="handleAuthSubmit()">Sign In</button>
+    <div id="orDivider">or</div>
+    <button id="googleSignInBtn" onclick="handleGoogleSignIn()">
+      <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.6-6 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6 29.6 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.9 18.9 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6 29.6 4 24 4c-7.4 0-13.8 4.1-17.1 10.1z"/><path fill="#4CAF50" d="M24 44c5.5 0 10.4-1.9 14.1-5.1l-6.5-5.5C29.6 35.1 27 36 24 36c-5.3 0-9.7-3.4-11.3-8.1l-6.6 5.1C9.9 39.6 16.4 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4 5.5l6.5 5.5C40.9 36.6 44 30.9 44 24c0-1.3-.1-2.7-.4-3.5z"/></svg>
+      Continue with Google
+    </button>
+    <div id="authToggle" onclick="toggleAuthMode()">Don't have an account? <span>Sign up</span></div>
+    <div id="forgotPassword" onclick="handleForgotPassword()">Forgot password?</div>
+  </div>
+
+  <!-- CHAT SCREEN -->
+  <div id="chatScreen">
+    <div id="header">
+      <div>
+        <div id="headerTitle">Your Companion</div>
+        <div id="status">Loading model...</div>
+        <div id="loadBar"><div id="loadFill"></div></div>
+      </div>
+      <button id="signOutBtn" onclick="handleSignOut()">Sign out</button>
+    </div>
+    <div id="chat"></div>
+    <div id="inputBar">
+      <textarea id="userInput" placeholder="Loading..." rows="1" disabled></textarea>
+      <button id="sendBtn" onclick="sendMessage()" disabled>➤</button>
+    </div>
+  </div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+  onAuthStateChanged, signOut, sendPasswordResetEmail,
+  GoogleAuthProvider, signInWithPopup
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {
+  getFirestore, doc, getDoc, setDoc
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { Wllama } from "https://cdn.jsdelivr.net/npm/@wllama/wllama@2/esm/index.js";
+
+// ---------- Firebase config ----------
+const firebaseConfig = {
+  apiKey: "AIzaSyASBWzq-pAXUD9MZWM-HCMOX28yVNK3IC4",
+  authDomain: "wolf-companion.firebaseapp.com",
+  projectId: "wolf-companion",
+  storageBucket: "wolf-companion.firebasestorage.app",
+  messagingSenderId: "66839823232",
+  appId: "1:66839823232:web:73ac4e0ad55e1cbfb27765",
+  measurementId: "G-HPCKG2CMSK"
+};
+const fbApp = initializeApp(firebaseConfig);
+const auth = getAuth(fbApp);
+const db = getFirestore(fbApp);
+
+// ---------- DOM refs ----------
+const authScreen = document.getElementById('authScreen');
+const chatScreen = document.getElementById('chatScreen');
+const emailInput = document.getElementById('emailInput');
+const passwordInput = document.getElementById('passwordInput');
+const authError = document.getElementById('authError');
+const authSubmit = document.getElementById('authSubmit');
+const authModeText = document.getElementById('authModeText');
+const authToggle = document.getElementById('authToggle');
+
+const chatEl = document.getElementById('chat');
+const inputEl = document.getElementById('userInput');
+const sendBtn = document.getElementById('sendBtn');
+const statusEl = document.getElementById('status');
+const loadFill = document.getElementById('loadFill');
+
+const MODEL_URL = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf";
+const CONFIG_PATHS = {
+  'single-thread/wllama.wasm': "https://cdn.jsdelivr.net/npm/@wllama/wllama@2/esm/single-thread/wllama.wasm",
+  'multi-thread/wllama.wasm': "https://cdn.jsdelivr.net/npm/@wllama/wllama@2/esm/multi-thread/wllama.wasm",
+};
+const SYSTEM_PROMPT = "You are a warm, witty, emotionally supportive companion. Talk like a real friend - casual, caring, a bit playful. Keep responses conversational length, not essays.";
+
+let isSignUpMode = false;
+let wllama;
+let currentUser = null;
+let history = [{ role: "system", content: SYSTEM_PROMPT }];
+
+// ---------- Auth mode toggle ----------
+window.toggleAuthMode = function () {
+  isSignUpMode = !isSignUpMode;
+  authSubmit.textContent = isSignUpMode ? 'Create Account' : 'Sign In';
+  authModeText.textContent = isSignUpMode
+    ? 'Create an account to save your companion across devices.'
+    : 'Sign in to continue your conversations across devices.';
+  authToggle.innerHTML = isSignUpMode
+    ? 'Already have an account? <span>Sign in</span>'
+    : "Don't have an account? <span>Sign up</span>";
+  authError.textContent = '';
+};
+
+window.handleAuthSubmit = async function () {
+  const email = emailInput.value.trim();
+  const password = passwordInput.value;
+  authError.textContent = '';
+  if (!email || !password) {
+    authError.textContent = 'Please enter both email and password.';
+    return;
+  }
+  authSubmit.disabled = true;
+  try {
+    if (isSignUpMode) {
+      await createUserWithEmailAndPassword(auth, email, password);
+    } else {
+      await signInWithEmailAndPassword(auth, email, password);
+    }
+    // onAuthStateChanged will take it from here
+  } catch (err) {
+    authError.textContent = friendlyAuthError(err.code);
+  } finally {
+    authSubmit.disabled = false;
+  }
+};
+
+function friendlyAuthError(code) {
+  const map = {
+    'auth/email-already-in-use': 'That email is already registered. Try signing in instead.',
+    'auth/invalid-email': 'That email address looks invalid.',
+    'auth/weak-password': 'Password should be at least 6 characters.',
+    'auth/user-not-found': "We couldn't find an account with that email.",
+    'auth/wrong-password': 'Incorrect password.',
+    'auth/invalid-credential': 'Incorrect email or password.',
+    'auth/too-many-requests': 'Too many attempts. Please wait a moment and try again.',
+  };
+  return map[code] || 'Something went wrong. Please try again.';
+}
+
+window.handleSignOut = async function () {
+  await signOut(auth);
+};
+
+window.handleForgotPassword = async function () {
+  const email = emailInput.value.trim();
+  authError.textContent = '';
+  if (!email) {
+    authError.textContent = 'Enter your email above first, then tap "Forgot password?"';
+    return;
+  }
+  try {
+    await sendPasswordResetEmail(auth, email);
+    authError.style.color = '#4ade80';
+    authError.textContent = 'Password reset email sent. Check your inbox.';
+  } catch (err) {
+    authError.style.color = '';
+    authError.textContent = friendlyAuthError(err.code);
+  }
+};
+
+window.handleGoogleSignIn = async function () {
+  authError.textContent = '';
+  const provider = new GoogleAuthProvider();
+  try {
+    await signInWithPopup(auth, provider);
+    // onAuthStateChanged takes it from here
+  } catch (err) {
+    if (err.code !== 'auth/popup-closed-by-user') {
+      authError.textContent = friendlyAuthError(err.code) || 'Google sign-in failed. Please try again.';
+    }
+  }
+};
+
+// ---------- Chat UI helpers ----------
+function addMessage(text, cls) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + cls;
+  div.textContent = text;
+  chatEl.appendChild(div);
+  chatEl.scrollTop = chatEl.scrollHeight;
+  return div;
+}
+
+function renderHistory() {
+  chatEl.innerHTML = '';
+  for (const m of history) {
+    if (m.role === 'user') addMessage(m.content, 'user');
+    else if (m.role === 'assistant') addMessage(m.content, 'bot');
+  }
+}
+
+// ---------- Firestore memory ----------
+async function loadMemory(uid) {
+  try {
+    const snap = await getDoc(doc(db, 'conversations', uid));
+    if (snap.exists() && Array.isArray(snap.data().messages)) {
+      history = snap.data().messages;
+      if (history.length === 0 || history[0].role !== 'system') {
+        history.unshift({ role: 'system', content: SYSTEM_PROMPT });
+      }
+    }
+  } catch (err) {
+    console.warn('Could not load memory:', err);
+  }
+}
+
+async function saveMemory(uid) {
+  try {
+    await setDoc(doc(db, 'conversations', uid), { messages: history, updatedAt: Date.now() });
+  } catch (err) {
+    console.warn('Could not save memory:', err);
+  }
+}
+
+// ---------- Model loading ----------
+async function initModel() {
+  try {
+    wllama = new Wllama(CONFIG_PATHS);
+    await wllama.loadModelFromUrl(MODEL_URL, {
+      progressCallback: (p) => {
+        const pct = Math.round((p.loaded / p.total) * 100);
+        loadFill.style.width = pct + '%';
+        statusEl.textContent = `Downloading model... ${pct}%`;
+      }
+    });
+    document.getElementById('loadBar').style.display = 'none';
+    statusEl.textContent = 'Ready — your conversations sync to your account.';
+    inputEl.disabled = false;
+    sendBtn.disabled = false;
+    inputEl.placeholder = 'Say something...';
+    renderHistory();
+    if (history.length <= 1) {
+      addMessage('Model loaded. Signed in as ' + currentUser.email + '.', 'sys');
+    }
+  } catch (err) {
+    statusEl.textContent = 'Failed to load model: ' + err.message;
+  }
+}
+
+window.sendMessage = async function () {
+  const text = inputEl.value.trim();
+  if (!text || !wllama || !currentUser) return;
+  inputEl.value = '';
+  inputEl.style.height = 'auto';
+  addMessage(text, 'user');
+  history.push({ role: 'user', content: text });
+
+  sendBtn.disabled = true;
+  inputEl.disabled = true;
+  const botDiv = addMessage('...', 'bot');
+
+  try {
+    const prompt = await wllama.formatChat(history, true);
+    let reply = '';
+    await wllama.createCompletion(prompt, {
+      nPredict: 300,
+      sampling: { temp: 0.8 },
+      onNewToken: (token, piece, currentText) => {
+        reply = currentText;
+        botDiv.textContent = currentText;
+        chatEl.scrollTop = chatEl.scrollHeight;
+      }
+    });
+    history.push({ role: 'assistant', content: reply });
+    await saveMemory(currentUser.uid);
+  } catch (err) {
+    botDiv.textContent = 'Error generating a reply: ' + err.message;
+  } finally {
+    sendBtn.disabled = false;
+    inputEl.disabled = false;
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+};
+
+inputEl.addEventListener('input', () => {
+  inputEl.style.height = 'auto';
+  inputEl.style.height = Math.min(inputEl.scrollHeight, 100) + 'px';
+});
+inputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+// ---------- Auth state listener ----------
+onAuthStateChanged(auth, async (user) => {
+  if (user) {
+    currentUser = user;
+    authScreen.classList.add('hidden');
+    chatScreen.classList.add('visible');
+    await loadMemory(user.uid);
+    if (!wllama) await initModel();
+    else renderHistory();
+  } else {
+    currentUser = null;
+    authScreen.classList.remove('hidden');
+    chatScreen.classList.remove('visible');
+    emailInput.value = '';
+    passwordInput.value = '';
+  }
+});
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
