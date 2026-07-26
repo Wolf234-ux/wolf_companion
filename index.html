@@ -10,13 +10,25 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
-  script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdn.jsdelivr.net;
+  script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' blob: https://www.gstatic.com https://cdn.jsdelivr.net https://www.google.com;
   style-src 'self' 'unsafe-inline';
-  connect-src 'self' https://*.googleapis.com https://*.google.com https://*.firebaseio.com https://*.firebaseapp.com https://cdn.jsdelivr.net https://huggingface.co https://cdn-lfs.huggingface.co https://cdn-lfs-us-1.huggingface.co;
+  connect-src 'self' https: wss:;
   img-src 'self' data: https:;
   worker-src 'self' blob:;
-  frame-src https://wolf-companion.firebaseapp.com https://accounts.google.com;
+  frame-src https://wolf-companion.firebaseapp.com https://accounts.google.com https://www.google.com;
 ">
+<!--
+  connect-src is intentionally broad (any https:) rather than a hardcoded
+  domain allowlist. Hugging Face serves model files from a rotating set of
+  CDN/LFS subdomains that aren't predictable or stable, so an allowlist
+  here is a guaranteed future breakage (this is exactly the bug that
+  caused "Failed to fetch" on every model load). This app has no secrets
+  a stricter connect-src would meaningfully protect -- the Firebase config
+  is designed to be public, and XSS risk is separately mitigated by only
+  ever using textContent (never innerHTML) for user/model-generated text.
+  script-src stays a real allowlist since that's where CSP actually earns
+  its keep (blocking injected/foreign script execution).
+-->
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; margin: 0; }
