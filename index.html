@@ -10,25 +10,13 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
-  script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' blob: https://www.gstatic.com https://cdn.jsdelivr.net https://www.google.com;
+  script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' blob: https://www.gstatic.com https://cdn.jsdelivr.net https://www.google.com https://accounts.google.com https://esm.sh;
   style-src 'self' 'unsafe-inline';
   connect-src 'self' https: wss:;
   img-src 'self' data: https:;
   worker-src 'self' blob:;
   frame-src https://wolf-companion.firebaseapp.com https://accounts.google.com https://www.google.com;
 ">
-<!--
-  connect-src is intentionally broad (any https:) rather than a hardcoded
-  domain allowlist. Hugging Face serves model files from a rotating set of
-  CDN/LFS subdomains that aren't predictable or stable, so an allowlist
-  here is a guaranteed future breakage (this is exactly the bug that
-  caused "Failed to fetch" on every model load). This app has no secrets
-  a stricter connect-src would meaningfully protect -- the Firebase config
-  is designed to be public, and XSS risk is separately mitigated by only
-  ever using textContent (never innerHTML) for user/model-generated text.
-  script-src stays a real allowlist since that's where CSP actually earns
-  its keep (blocking injected/foreign script execution).
--->
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; margin: 0; }
@@ -40,6 +28,7 @@
     flex-direction: column;
     overflow: hidden;
   }
+  #root { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 
   /* ---------- Auth screen ---------- */
   #authScreen {
@@ -50,7 +39,6 @@
     padding: 24px calc(env(safe-area-inset-right,0px) + 24px) 24px calc(env(safe-area-inset-left,0px) + 24px);
     gap: 14px;
   }
-  #authScreen.hidden { display: none; }
   #authTitle { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
   #authSubtitle { font-size: 13.5px; color: #7d8290; margin-bottom: 10px; }
   #authScreen input {
@@ -60,13 +48,10 @@
     background: #1c1f27;
     color: white;
     font-size: 15.5px;
+    width: 100%;
   }
   #authScreen input:focus { outline: 2px solid #3b6fed44; }
-  #authError {
-    color: #f87171;
-    font-size: 13px;
-    min-height: 16px;
-  }
+  #authError { font-size: 13px; min-height: 16px; }
   #authSubmit {
     padding: 13px;
     border-radius: 12px;
@@ -75,47 +60,19 @@
     color: white;
     font-weight: 600;
     font-size: 15.5px;
+    width: 100%;
   }
   #authSubmit:disabled { background: #2a2d36; }
-  #authToggle {
-    text-align: center;
-    color: #7d8290;
-    font-size: 13.5px;
-    margin-top: 6px;
-  }
+  #authToggle { text-align: center; color: #7d8290; font-size: 13.5px; margin-top: 6px; }
   #authToggle span { color: #6d94ff; }
-  #forgotPassword {
-    text-align: center;
-    color: #6d94ff;
-    font-size: 13px;
-    margin-top: -4px;
-  }
-  #orDivider {
-    text-align: center;
-    color: #4a4e59;
-    font-size: 12px;
-    margin: 2px 0;
-  }
-  #googleSignInBtn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    padding: 13px;
-    border-radius: 12px;
-    border: 1px solid #2a2d36;
-    background: #1c1f27;
-    color: white;
-    font-weight: 600;
-    font-size: 14.5px;
-  }
-  #googleSignInBtn:active { background: #23262e; }
+  #forgotPassword { text-align: center; color: #6d94ff; font-size: 13px; margin-top: -4px; }
+  #orDivider { text-align: center; color: #4a4e59; font-size: 12px; margin: 2px 0; }
+  #googleBtnHost { display: flex; justify-content: center; min-height: 44px; }
   #tosNote { text-align: center; color: #4a4e59; font-size: 11px; margin-top: 4px; }
   #tosNote a { color: #6d94ff; text-decoration: none; }
 
   /* ---------- Chat screen ---------- */
-  #chatScreen { flex: 1; display: none; flex-direction: column; overflow: hidden; }
-  #chatScreen.visible { display: flex; }
+  #chatScreen { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
   #header {
     padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px 12px;
     background: #14161c;
@@ -127,16 +84,16 @@
   }
   #headerTitle { font-weight: 700; font-size: 17px; }
   #status { font-size: 12.5px; color: #7d8290; margin-top: 6px; }
-  #syncWarning { font-size: 11.5px; color: #f0ad4e; margin-top: 3px; display: none; }
+  #syncWarning { font-size: 11.5px; color: #f0ad4e; margin-top: 3px; }
   #headerBtns { display: flex; gap: 6px; flex-shrink: 0; }
   #signOutBtn, #accountBtn {
     background: none; border: 1px solid #2a2d36; color: #9aa0ac;
     border-radius: 8px; padding: 6px 10px; font-size: 12px;
   }
   #loadBar { height: 4px; background: #23262e; border-radius: 2px; margin-top: 8px; overflow: hidden; }
-  #loadFill { height: 100%; width: 0%; background: #3b6fed; transition: width 0.2s; }
+  #loadFill { height: 100%; background: #3b6fed; transition: width 0.2s; }
   #retryBtn {
-    display: none; margin-top: 8px; padding: 8px 14px; border-radius: 10px; border: none;
+    margin-top: 8px; padding: 8px 14px; border-radius: 10px; border: none;
     background: #3b6fed; color: white; font-weight: 600; font-size: 13px;
   }
   #chat {
@@ -169,10 +126,9 @@
 
   /* ---------- Account modal ---------- */
   #accountModal {
-    display: none; position: fixed; inset: 0; background: #000000aa;
-    align-items: flex-end; z-index: 50;
+    position: fixed; inset: 0; background: #000000aa;
+    display: flex; align-items: flex-end; z-index: 50;
   }
-  #accountModal.open { display: flex; }
   #accountSheet {
     background: #14161c; width: 100%; border-radius: 18px 18px 0 0;
     padding: 20px calc(env(safe-area-inset-right,0px) + 20px) calc(env(safe-area-inset-bottom,0px) + 20px) calc(env(safe-area-inset-left,0px) + 20px);
@@ -189,65 +145,36 @@
 </style>
 </head>
 <body>
-
-  <!-- AUTH SCREEN -->
-  <div id="authScreen">
-    <div id="authTitle">Your Companion</div>
-    <div id="authSubtitle" id="authModeText">Sign in to continue your conversations across devices.</div>
-    <input id="emailInput" type="email" placeholder="Email" autocomplete="email" maxlength="254" />
-    <input id="passwordInput" type="password" placeholder="Password" autocomplete="current-password" maxlength="128" />
-    <div id="authError"></div>
-    <button id="authSubmit" onclick="handleAuthSubmit()">Sign In</button>
-    <div id="orDivider">or</div>
-    <button id="googleSignInBtn" onclick="handleGoogleSignIn()">
-      <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.6-6 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6 29.6 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.9 18.9 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6 29.6 4 24 4c-7.4 0-13.8 4.1-17.1 10.1z"/><path fill="#4CAF50" d="M24 44c5.5 0 10.4-1.9 14.1-5.1l-6.5-5.5C29.6 35.1 27 36 24 36c-5.3 0-9.7-3.4-11.3-8.1l-6.6 5.1C9.9 39.6 16.4 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4 5.5l6.5 5.5C40.9 36.6 44 30.9 44 24c0-1.3-.1-2.7-.4-3.5z"/></svg>
-      Continue with Google
-    </button>
-    <div id="authToggle" onclick="toggleAuthMode()">Don't have an account? <span>Sign up</span></div>
-    <div id="forgotPassword" onclick="handleForgotPassword()">Forgot password?</div>
-    <div id="tosNote">By continuing you agree to our <a href="TOS.md">Terms</a> &amp; <a href="PRIVACY.md">Privacy Policy</a>.</div>
-  </div>
-
-  <!-- CHAT SCREEN -->
-  <div id="chatScreen">
-    <div id="header">
-      <div>
-        <div id="headerTitle">Your Companion</div>
-        <div id="status">Loading model (~1GB, one-time)...</div>
-        <div id="syncWarning">⚠ Last message may not have synced. Check your connection.</div>
-        <div id="loadBar"><div id="loadFill"></div></div>
-        <button id="retryBtn" onclick="manualRetryLoad()">Retry loading</button>
-      </div>
-      <div id="headerBtns">
-        <button id="accountBtn" onclick="openAccountSheet()">Account</button>
-        <button id="signOutBtn" onclick="handleSignOut()">Sign out</button>
-      </div>
-    </div>
-    <div id="chat"></div>
-    <div id="inputBar">
-      <textarea id="userInput" placeholder="Loading..." rows="1" disabled maxlength="4000"></textarea>
-      <button id="sendBtn" onclick="sendMessage()" disabled>➤</button>
-    </div>
-  </div>
-
-  <!-- ACCOUNT SHEET -->
-  <div id="accountModal" onclick="if(event.target===this) closeAccountSheet()">
-    <div id="accountSheet">
-      <h3>Account</h3>
-      <p id="accountEmailText"></p>
-      <button class="sheetBtn" id="deleteAccountBtn" onclick="handleDeleteAccount()">Delete my account &amp; data</button>
-      <p>This permanently deletes your conversation history and sign-in — it cannot be undone.</p>
-      <button id="closeSheetBtn" onclick="closeAccountSheet()">Close</button>
-    </div>
-  </div>
+  <div id="root"></div>
 
 <script type="module">
+// ---------------------------------------------------------------------
+// Buildless React: no bundler, no JSX (JSX needs a Babel transpile step
+// which adds real cost for no functional benefit here) -- everything is
+// React.createElement calls, aliased to `h`. React/ReactDOM and Firebase
+// are all loaded as genuine ES modules, so this stays a single file with
+// zero build step, matching the existing phone-only push workflow.
+//
+// Design choice: the heavy imperative bits (the wllama model instance,
+// streaming tokens, the raw conversation array) live in refs, not state --
+// re-rendering React on every streamed token would be wasteful and those
+// values need to be read synchronously inside async callbacks anyway.
+// React state/hooks drive only what actually needs to trigger a re-render
+// (screen, messages snapshot, status text, etc). This is the sensible
+// buildless-React shape for an app this size, not a full Redux-style
+// rewrite -- that would be over-engineering for two screens.
+// ---------------------------------------------------------------------
+import React from "https://esm.sh/react@18.3.1";
+import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";
+const { useState, useEffect, useRef, useCallback } = React;
+const h = React.createElement;
+
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
   onAuthStateChanged, signOut, sendPasswordResetEmail,
-  GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult,
-  deleteUser, reauthenticateWithCredential, reauthenticateWithPopup, EmailAuthProvider
+  GoogleAuthProvider, signInWithCredential,
+  deleteUser, reauthenticateWithCredential, EmailAuthProvider
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   initializeFirestore, persistentLocalCache, persistentSingleTabManager,
@@ -255,7 +182,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { Wllama } from "https://cdn.jsdelivr.net/npm/@wllama/wllama@2/esm/index.js";
 
-// ---------- Firebase config ----------
+// ---------- Config ----------
 const firebaseConfig = {
   apiKey: "AIzaSyASBWzq-pAXUD9MZWM-HCMOX28yVNK3IC4",
   authDomain: "wolf-companion.firebaseapp.com",
@@ -265,36 +192,17 @@ const firebaseConfig = {
   appId: "1:66839823232:web:73ac4e0ad55e1cbfb27765",
   measurementId: "G-HPCKG2CMSK"
 };
+
+// TODO: replace with the real value from Firebase Console -> Authentication
+// -> Sign-in method -> Google -> Web SDK configuration -> "Web client ID".
+// Google Sign-In will not work until this is a real client ID.
+const GOOGLE_CLIENT_ID = "REPLACE_WITH_WEB_CLIENT_ID.apps.googleusercontent.com";
+
 const fbApp = initializeApp(firebaseConfig);
 const auth = getAuth(fbApp);
-// Persistent offline cache: writes/reads made while offline are queued
-// locally and auto-sync once connectivity returns, instead of failing
-// outright. This is what actually makes "usable offline" true rather
-// than just "the model still runs offline."
 const db = initializeFirestore(fbApp, {
   localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() })
 });
-
-// ---------- DOM refs ----------
-const authScreen = document.getElementById('authScreen');
-const chatScreen = document.getElementById('chatScreen');
-const emailInput = document.getElementById('emailInput');
-const passwordInput = document.getElementById('passwordInput');
-const authError = document.getElementById('authError');
-const authSubmit = document.getElementById('authSubmit');
-const authModeText = document.getElementById('authModeText');
-const authToggle = document.getElementById('authToggle');
-
-const chatEl = document.getElementById('chat');
-const inputEl = document.getElementById('userInput');
-const sendBtn = document.getElementById('sendBtn');
-const statusEl = document.getElementById('status');
-const loadFill = document.getElementById('loadFill');
-const loadBar = document.getElementById('loadBar');
-const retryBtn = document.getElementById('retryBtn');
-const syncWarning = document.getElementById('syncWarning');
-const accountModal = document.getElementById('accountModal');
-const accountEmailText = document.getElementById('accountEmailText');
 
 const MODEL_URL = "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf";
 const CONFIG_PATHS = {
@@ -303,58 +211,15 @@ const CONFIG_PATHS = {
 };
 const SYSTEM_PROMPT = "You are a warm, witty, emotionally supportive companion. Talk like a real friend - casual, caring, a bit playful. Keep responses conversational length, not essays.";
 
-// ---------- Memory / context limits (foundation fix: bounded growth) ----------
-const KEEP_RAW_MESSAGES = 40;   // max raw user+assistant messages kept & stored in Firestore
-const CONTEXT_SEND_MESSAGES = 12; // how many recent messages are actually sent to the model each turn
-const SUMMARIZE_TRIGGER = 40;   // when raw count exceeds this, older ones get summarized into `profile`
-const PROFILE_MAX_CHARS = 1500; // rolling profile summary is capped so it can't grow forever
+const KEEP_RAW_MESSAGES = 40;
+const CONTEXT_SEND_MESSAGES = 12;
+const SUMMARIZE_TRIGGER = 40;
+const PROFILE_MAX_CHARS = 1500;
 const MAX_INPUT_CHARS = 4000;
-const MIN_SEND_INTERVAL_MS = 700; // basic client-side throttle
+const MIN_SEND_INTERVAL_MS = 700;
 const MODEL_LOAD_MAX_ATTEMPTS = 3;
 
-let isSignUpMode = false;
-let wllama;
-let currentUser = null;
-let history = [{ role: "system", content: SYSTEM_PROMPT }]; // full raw record (capped)
-let profile = ""; // rolling long-term memory summary
-let lastSendTs = 0;
-let modelReady = false;
-
-// ---------- Auth mode toggle ----------
-window.toggleAuthMode = function () {
-  isSignUpMode = !isSignUpMode;
-  authSubmit.textContent = isSignUpMode ? 'Create Account' : 'Sign In';
-  authModeText.textContent = isSignUpMode
-    ? 'Create an account to save your companion across devices.'
-    : 'Sign in to continue your conversations across devices.';
-  authToggle.innerHTML = isSignUpMode
-    ? 'Already have an account? <span>Sign in</span>'
-    : "Don't have an account? <span>Sign up</span>";
-  authError.textContent = '';
-};
-
-window.handleAuthSubmit = async function () {
-  const email = emailInput.value.trim();
-  const password = passwordInput.value;
-  authError.textContent = '';
-  if (!email || !password) {
-    authError.textContent = 'Please enter both email and password.';
-    return;
-  }
-  authSubmit.disabled = true;
-  try {
-    if (isSignUpMode) {
-      await createUserWithEmailAndPassword(auth, email, password);
-    } else {
-      await signInWithEmailAndPassword(auth, email, password);
-    }
-    // onAuthStateChanged will take it from here
-  } catch (err) {
-    authError.textContent = friendlyAuthError(err.code);
-  } finally {
-    authSubmit.disabled = false;
-  }
-};
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 function friendlyAuthError(code) {
   const map = {
@@ -366,366 +231,474 @@ function friendlyAuthError(code) {
     'auth/invalid-credential': 'Incorrect email or password.',
     'auth/too-many-requests': 'Too many attempts. Please wait a moment and try again.',
     'auth/requires-recent-login': 'For security, please sign in again to confirm this.',
-    'auth/popup-blocked': 'Your browser blocked the sign-in popup. Trying an alternate method...',
     'auth/network-request-failed': 'Network error. Check your connection and try again.',
   };
   return map[code] || 'Something went wrong. Please try again.';
 }
 
-window.handleSignOut = async function () {
-  if (!confirm('Sign out of Your Companion?')) return;
-  await signOut(auth);
-};
+function App() {
+  const wllamaRef = useRef(null);
+  const historyRef = useRef([{ role: 'system', content: SYSTEM_PROMPT }]);
+  const profileRef = useRef('');
+  const userRef = useRef(null);
+  const modelReadyRef = useRef(false);
+  const lastSendTsRef = useRef(0);
+  const chatScrollRef = useRef(null);
+  const googleBtnHostRef = useRef(null);
+  const gisReadyRef = useRef(false);
 
-window.handleForgotPassword = async function () {
-  const email = emailInput.value.trim();
-  authError.textContent = '';
-  if (!email) {
-    authError.textContent = 'Enter your email above first, then tap "Forgot password?"';
-    return;
-  }
-  try {
-    await sendPasswordResetEmail(auth, email);
-    authError.style.color = '#4ade80';
-    authError.textContent = 'Password reset email sent. Check your inbox.';
-  } catch (err) {
-    authError.style.color = '';
-    authError.textContent = friendlyAuthError(err.code);
-  }
-};
+  const [screen, setScreen] = useState('auth'); // 'auth' | 'chat'
+  const [isSignUpMode, setIsSignUpMode] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [authErrorOk, setAuthErrorOk] = useState(false); // green "success" style (password reset email sent)
+  const [authBusy, setAuthBusy] = useState(false);
 
-// Popup first (best UX), fall back to redirect if the environment blocks popups
-// (common in Android in-app browsers). This fixes the popup/redirect mismatch
-// between the code and TODO.md.
-window.handleGoogleSignIn = async function () {
-  authError.style.color = '';
-  authError.textContent = '';
-  const provider = new GoogleAuthProvider();
-  try {
-    await signInWithPopup(auth, provider);
-  } catch (err) {
-    // Only these two mean the user deliberately backed out — don't retry.
-    if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') return;
-    // Everything else (including the generic 'auth/internal-error' that
-    // mobile browsers throw when a popup's postMessage channel breaks,
-    // which is far more common in practice than the specific
-    // 'auth/popup-blocked' code) falls back to redirect rather than
-    // dead-ending the user on a raw error.
+  const [statusText, setStatusText] = useState('Loading model (~1GB, one-time)...');
+  const [loadPct, setLoadPct] = useState(0);
+  const [loadBarVisible, setLoadBarVisible] = useState(true);
+  const [retryVisible, setRetryVisible] = useState(false);
+  const [syncWarningVisible, setSyncWarningVisible] = useState(false);
+  const [welcomeNotice, setWelcomeNotice] = useState('');
+
+  const [messages, setMessages] = useState([]); // rendered user/assistant snapshot
+  const [streamingBotText, setStreamingBotText] = useState(null);
+  const [inputValue, setInputValue] = useState('');
+  const [sending, setSending] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+
+  function refreshMessagesView() {
+    setMessages(historyRef.current.slice(1).map((m, i) => ({ ...m, _k: i })));
+  }
+
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [messages, streamingBotText]);
+
+  // ---------- Firestore memory ----------
+  async function loadMemory(uid) {
     try {
-      await signInWithRedirect(auth, provider);
-    } catch (err2) {
-      authError.textContent = friendlyAuthError(err2.code) + ' (' + err2.code + ')';
-    }
-  }
-};
-
-// Must be called on load to complete a redirect-based sign-in.
-getRedirectResult(auth).catch((err) => {
-  if (err && err.code) {
-    authError.textContent = friendlyAuthError(err.code) + ' (' + err.code + ')';
-  }
-});
-
-// ---------- Account sheet ----------
-window.openAccountSheet = function () {
-  accountEmailText.textContent = currentUser ? ('Signed in as ' + currentUser.email) : '';
-  accountModal.classList.add('open');
-};
-window.closeAccountSheet = function () {
-  accountModal.classList.remove('open');
-};
-
-async function reauthenticate() {
-  const providerId = currentUser.providerData[0]?.providerId;
-  if (providerId === 'google.com') {
-    await reauthenticateWithPopup(currentUser, new GoogleAuthProvider());
-  } else {
-    const pwd = prompt('For security, please re-enter your password to confirm:');
-    if (!pwd) throw { code: 'cancelled' };
-    const cred = EmailAuthProvider.credential(currentUser.email, pwd);
-    await reauthenticateWithCredential(currentUser, cred);
-  }
-}
-
-window.handleDeleteAccount = async function () {
-  if (!currentUser) return;
-  const ok = confirm('This permanently deletes your account and all conversation history. This cannot be undone. Continue?');
-  if (!ok) return;
-  const uid = currentUser.uid;
-  try {
-    await deleteDoc(doc(db, 'conversations', uid));
-    await deleteUser(currentUser);
-    closeAccountSheet();
-  } catch (err) {
-    if (err.code === 'auth/requires-recent-login') {
-      try {
-        await reauthenticate();
-        await deleteDoc(doc(db, 'conversations', uid));
-        await deleteUser(currentUser);
-        closeAccountSheet();
-      } catch (err2) {
-        if (err2.code !== 'cancelled') {
-          alert('Could not delete account: ' + (friendlyAuthError(err2.code) || err2.message));
+      const snap = await getDoc(doc(db, 'conversations', uid));
+      if (snap.exists()) {
+        const data = snap.data();
+        if (Array.isArray(data.messages)) {
+          historyRef.current = data.messages;
+          if (historyRef.current.length === 0 || historyRef.current[0].role !== 'system') {
+            historyRef.current.unshift({ role: 'system', content: SYSTEM_PROMPT });
+          }
         }
+        if (typeof data.profile === 'string') profileRef.current = data.profile;
       }
-    } else {
-      alert('Could not delete account: ' + (friendlyAuthError(err.code) || err.message));
+    } catch (err) {
+      console.warn('Could not load memory:', err);
+      setSyncWarningVisible(true);
     }
   }
-};
 
-// ---------- Chat UI helpers ----------
-function addMessage(text, cls) {
-  const div = document.createElement('div');
-  div.className = 'msg ' + cls;
-  div.textContent = text; // textContent only — never innerHTML with user/model content (XSS guard)
-  chatEl.appendChild(div);
-  chatEl.scrollTop = chatEl.scrollHeight;
-  return div;
-}
-
-function renderHistory() {
-  chatEl.innerHTML = '';
-  for (const m of history) {
-    if (m.role === 'user') addMessage(m.content, 'user');
-    else if (m.role === 'assistant') addMessage(m.content, 'bot');
+  async function saveMemory(uid, retried) {
+    try {
+      await setDoc(doc(db, 'conversations', uid), {
+        messages: historyRef.current,
+        profile: profileRef.current,
+        updatedAt: Date.now()
+      });
+      setSyncWarningVisible(false);
+    } catch (err) {
+      console.warn('Could not save memory:', err);
+      if (!retried) setTimeout(() => saveMemory(uid, true), 1500);
+      else setSyncWarningVisible(true);
+    }
   }
-}
 
-// ---------- Firestore memory ----------
-async function loadMemory(uid) {
-  try {
-    const snap = await getDoc(doc(db, 'conversations', uid));
-    if (snap.exists()) {
-      const data = snap.data();
-      if (Array.isArray(data.messages)) {
-        history = data.messages;
-        if (history.length === 0 || history[0].role !== 'system') {
-          history.unshift({ role: 'system', content: SYSTEM_PROMPT });
+  // ---------- Bounded memory / rolling summary ----------
+  async function maybeSummarizeOldMessages() {
+    const nonSystem = historyRef.current.slice(1);
+    if (nonSystem.length <= SUMMARIZE_TRIGGER || !wllamaRef.current || !modelReadyRef.current) return;
+    const overflow = nonSystem.length - KEEP_RAW_MESSAGES;
+    if (overflow <= 0) return;
+    const toSummarize = nonSystem.slice(0, overflow);
+    const keep = nonSystem.slice(overflow);
+    try {
+      const transcript = toSummarize.map(m => `${m.role}: ${m.content}`).join('\n').slice(0, 6000);
+      const prompt = await wllamaRef.current.formatChat([
+        { role: 'system', content: 'Extract lasting facts about the user from this chat excerpt: name, interests, ongoing topics, preferences, important context. Max 5 short bullet points. No chit-chat, no filler.' },
+        { role: 'user', content: transcript }
+      ], true);
+      let summary = '';
+      await wllamaRef.current.createCompletion(prompt, {
+        nPredict: 150, sampling: { temp: 0.3 },
+        onNewToken: (t, p, c) => { summary = c; }
+      });
+      profileRef.current = (profileRef.current + '\n' + summary.trim()).trim().slice(-PROFILE_MAX_CHARS);
+    } catch (err) {
+      console.warn('Summary step failed, dropping oldest messages without summarizing:', err);
+    }
+    historyRef.current = [{ role: 'system', content: SYSTEM_PROMPT }, ...keep];
+  }
+
+  function buildContextForModel() {
+    const systemContent = profileRef.current
+      ? `${SYSTEM_PROMPT}\n\nThings you remember about this person:\n${profileRef.current}`
+      : SYSTEM_PROMPT;
+    const recent = historyRef.current.slice(1).slice(-CONTEXT_SEND_MESSAGES);
+    return [{ role: 'system', content: systemContent }, ...recent];
+  }
+
+  // ---------- Model loading ----------
+  const initModel = useCallback(async function initModel(attempt = 1) {
+    setRetryVisible(false);
+    setLoadBarVisible(true);
+    try {
+      if (!wllamaRef.current) wllamaRef.current = new Wllama(CONFIG_PATHS);
+      await wllamaRef.current.loadModelFromUrl(MODEL_URL, {
+        progressCallback: (p) => {
+          const pct = Math.round((p.loaded / p.total) * 100);
+          setLoadPct(pct);
+          setStatusText(`Downloading model... ${pct}%`);
         }
+      });
+      setLoadBarVisible(false);
+      modelReadyRef.current = true;
+      setStatusText('Ready — your conversations sync to your account.');
+      refreshMessagesView();
+      if (historyRef.current.length <= 1 && userRef.current) {
+        setWelcomeNotice('Model loaded. Signed in as ' + userRef.current.email + '.');
       }
-      if (typeof data.profile === 'string') profile = data.profile;
+    } catch (err) {
+      if (attempt < MODEL_LOAD_MAX_ATTEMPTS) {
+        setStatusText(`Load failed, retrying (${attempt}/${MODEL_LOAD_MAX_ATTEMPTS})...`);
+        await sleep(1500 * attempt);
+        wllamaRef.current = undefined;
+        return initModel(attempt + 1);
+      }
+      setLoadBarVisible(false);
+      setStatusText('Failed to load model: ' + err.message);
+      setRetryVisible(true);
     }
-  } catch (err) {
-    console.warn('Could not load memory:', err);
-    showSyncWarning();
-  }
-}
+  }, []);
 
-async function saveMemory(uid, retried) {
-  try {
-    await setDoc(doc(db, 'conversations', uid), {
-      messages: history,
-      profile,
-      updatedAt: Date.now()
+  // ---------- Auth state ----------
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        userRef.current = user;
+        setScreen('chat');
+        await loadMemory(user.uid);
+        if (!wllamaRef.current) await initModel();
+        else refreshMessagesView();
+      } else {
+        userRef.current = null;
+        modelReadyRef.current = false;
+        setScreen('auth');
+        setAccountOpen(false);
+        setEmail('');
+        setPassword('');
+      }
     });
-    hideSyncWarning();
-  } catch (err) {
-    console.warn('Could not save memory:', err);
-    if (!retried) {
-      setTimeout(() => saveMemory(uid, true), 1500);
+    return unsub;
+  }, [initModel]);
+
+  // ---------- Resume/reconnect resilience ----------
+  useEffect(() => {
+    function onOnline() {
+      if (!modelReadyRef.current && retryVisible) initModel(1);
+    }
+    function onVisible() {
+      if (document.visibilityState === 'visible' && !modelReadyRef.current && retryVisible) initModel(1);
+    }
+    window.addEventListener('online', onOnline);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [retryVisible, initModel]);
+
+  // ---------- Service worker ----------
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    let reloaded = false;
+    const onControllerChange = () => {
+      if (reloaded) return;
+      reloaded = true;
+      location.reload();
+    };
+    navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+    return () => navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+  }, []);
+
+  // ---------- Google Identity Services ----------
+  const handleGisCredential = useCallback(async (response) => {
+    try {
+      const credential = GoogleAuthProvider.credential(response.credential);
+      await signInWithCredential(auth, credential);
+    } catch (err) {
+      setAuthErrorOk(false);
+      setAuthError(friendlyAuthError(err.code) + (err.code ? ` (${err.code})` : ''));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (screen !== 'auth') return;
+    let cancelled = false;
+
+    function setupButton() {
+      if (cancelled || !window.google || !googleBtnHostRef.current) return;
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGisCredential,
+        auto_select: false,
+      });
+      googleBtnHostRef.current.innerHTML = '';
+      window.google.accounts.id.renderButton(googleBtnHostRef.current, {
+        theme: 'filled_black', size: 'large', width: 320, text: 'continue_with', shape: 'pill'
+      });
+      gisReadyRef.current = true;
+    }
+
+    if (window.google && window.google.accounts) {
+      setupButton();
+    } else if (!document.getElementById('gis-script')) {
+      const s = document.createElement('script');
+      s.id = 'gis-script';
+      s.src = 'https://accounts.google.com/gsi/client';
+      s.async = true;
+      s.defer = true;
+      s.onload = setupButton;
+      document.head.appendChild(s);
     } else {
-      showSyncWarning();
+      document.getElementById('gis-script').addEventListener('load', setupButton);
+    }
+    return () => { cancelled = true; };
+  }, [screen, handleGisCredential]);
+
+  function requestGisCredential() {
+    return new Promise((resolve, reject) => {
+      if (!window.google || !window.google.accounts) return reject({ code: 'auth/internal-error' });
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: (resp) => resolve(resp.credential),
+      });
+      window.google.accounts.id.prompt((notification) => {
+        if (notification.isNotDisplayed && (notification.isNotDisplayed() || notification.isSkippedMoment())) {
+          reject({ code: 'cancelled' });
+        }
+      });
+    });
+  }
+
+  // ---------- Auth handlers ----------
+  async function handleAuthSubmit() {
+    const em = email.trim();
+    const pw = password;
+    setAuthError(''); setAuthErrorOk(false);
+    if (!em || !pw) { setAuthError('Please enter both email and password.'); return; }
+    setAuthBusy(true);
+    try {
+      if (isSignUpMode) await createUserWithEmailAndPassword(auth, em, pw);
+      else await signInWithEmailAndPassword(auth, em, pw);
+    } catch (err) {
+      setAuthError(friendlyAuthError(err.code));
+    } finally {
+      setAuthBusy(false);
     }
   }
-}
 
-function showSyncWarning() { syncWarning.style.display = 'block'; }
-function hideSyncWarning() { syncWarning.style.display = 'none'; }
-
-// ---------- Bounded memory: cap raw history + roll old messages into `profile` ----------
-// This is the fix for unbounded context growth (TODO: cap history) and doubles
-// as the "memory summary" personalization feature (TODO: memory summary).
-async function maybeSummarizeOldMessages() {
-  const nonSystem = history.slice(1);
-  if (nonSystem.length <= SUMMARIZE_TRIGGER || !wllama || !modelReady) return;
-
-  const overflowCount = nonSystem.length - KEEP_RAW_MESSAGES;
-  if (overflowCount <= 0) return;
-
-  const toSummarize = nonSystem.slice(0, overflowCount);
-  const keep = nonSystem.slice(overflowCount);
-
-  try {
-    const transcript = toSummarize.map(m => `${m.role}: ${m.content}`).join('\n').slice(0, 6000);
-    const prompt = await wllama.formatChat([
-      { role: 'system', content: 'Extract lasting facts about the user from this chat excerpt: name, interests, ongoing topics, preferences, important context. Max 5 short bullet points. No chit-chat, no filler.' },
-      { role: 'user', content: transcript }
-    ], true);
-    let summary = '';
-    await wllama.createCompletion(prompt, {
-      nPredict: 150,
-      sampling: { temp: 0.3 },
-      onNewToken: (t, p, c) => { summary = c; }
-    });
-    profile = (profile + '\n' + summary.trim()).trim().slice(-PROFILE_MAX_CHARS);
-  } catch (err) {
-    console.warn('Summary step failed, dropping oldest messages without summarizing:', err);
+  async function handleForgotPassword() {
+    const em = email.trim();
+    setAuthError(''); setAuthErrorOk(false);
+    if (!em) { setAuthError('Enter your email above first, then tap "Forgot password?"'); return; }
+    try {
+      await sendPasswordResetEmail(auth, em);
+      setAuthErrorOk(true);
+      setAuthError('Password reset email sent. Check your inbox.');
+    } catch (err) {
+      setAuthErrorOk(false);
+      setAuthError(friendlyAuthError(err.code));
+    }
   }
 
-  history = [{ role: 'system', content: SYSTEM_PROMPT }, ...keep];
-}
+  async function handleSignOut() {
+    if (!confirm('Sign out of Your Companion?')) return;
+    await signOut(auth);
+  }
 
-function buildContextForModel() {
-  const systemContent = profile
-    ? `${SYSTEM_PROMPT}\n\nThings you remember about this person:\n${profile}`
-    : SYSTEM_PROMPT;
-  const recent = history.slice(1).slice(-CONTEXT_SEND_MESSAGES);
-  return [{ role: 'system', content: systemContent }, ...recent];
-}
+  async function reauthenticate() {
+    const providerId = userRef.current.providerData[0] && userRef.current.providerData[0].providerId;
+    if (providerId === 'google.com') {
+      const idToken = await requestGisCredential();
+      const cred = GoogleAuthProvider.credential(idToken);
+      await reauthenticateWithCredential(userRef.current, cred);
+    } else {
+      const pwd = prompt('For security, please re-enter your password to confirm:');
+      if (!pwd) throw { code: 'cancelled' };
+      const cred = EmailAuthProvider.credential(userRef.current.email, pwd);
+      await reauthenticateWithCredential(userRef.current, cred);
+    }
+  }
 
-// ---------- Model loading (with retry + backoff — fixes the "stuck on network error" bug) ----------
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-async function initModel(attempt = 1) {
-  retryBtn.style.display = 'none';
-  loadBar.style.display = 'block';
-  try {
-    if (!wllama) wllama = new Wllama(CONFIG_PATHS);
-    await wllama.loadModelFromUrl(MODEL_URL, {
-      progressCallback: (p) => {
-        const pct = Math.round((p.loaded / p.total) * 100);
-        loadFill.style.width = pct + '%';
-        statusEl.textContent = `Downloading model... ${pct}%`;
+  async function handleDeleteAccount() {
+    if (!userRef.current) return;
+    if (!confirm('This permanently deletes your account and all conversation history. This cannot be undone. Continue?')) return;
+    const uid = userRef.current.uid;
+    try {
+      await deleteDoc(doc(db, 'conversations', uid));
+      await deleteUser(userRef.current);
+      setAccountOpen(false);
+    } catch (err) {
+      if (err.code === 'auth/requires-recent-login') {
+        try {
+          await reauthenticate();
+          await deleteDoc(doc(db, 'conversations', uid));
+          await deleteUser(userRef.current);
+          setAccountOpen(false);
+        } catch (err2) {
+          if (err2.code !== 'cancelled') alert('Could not delete account: ' + (friendlyAuthError(err2.code) || err2.message));
+        }
+      } else {
+        alert('Could not delete account: ' + (friendlyAuthError(err.code) || err.message));
       }
-    });
-    loadBar.style.display = 'none';
-    modelReady = true;
-    statusEl.textContent = 'Ready — your conversations sync to your account.';
-    inputEl.disabled = false;
-    sendBtn.disabled = false;
-    inputEl.placeholder = 'Say something...';
-    renderHistory();
-    if (history.length <= 1) {
-      addMessage('Model loaded. Signed in as ' + currentUser.email + '.', 'sys');
     }
-  } catch (err) {
-    if (attempt < MODEL_LOAD_MAX_ATTEMPTS) {
-      statusEl.textContent = `Load failed, retrying (${attempt}/${MODEL_LOAD_MAX_ATTEMPTS})...`;
-      await sleep(1500 * attempt);
-      wllama = undefined;
-      return initModel(attempt + 1);
-    }
-    loadBar.style.display = 'none';
-    statusEl.textContent = 'Failed to load model: ' + err.message;
-    retryBtn.style.display = 'inline-block';
   }
+
+  // ---------- Sending messages ----------
+  async function sendMessage() {
+    const now = Date.now();
+    if (now - lastSendTsRef.current < MIN_SEND_INTERVAL_MS) return;
+    const text = inputValue.trim().slice(0, MAX_INPUT_CHARS);
+    if (!text || !wllamaRef.current || !modelReadyRef.current || !userRef.current) return;
+    lastSendTsRef.current = now;
+
+    setInputValue('');
+    historyRef.current.push({ role: 'user', content: text });
+    refreshMessagesView();
+    setSending(true);
+    setStreamingBotText('...');
+
+    try {
+      const contextMessages = buildContextForModel();
+      const lastMsg = historyRef.current[historyRef.current.length - 1];
+      if (!contextMessages.includes(lastMsg)) contextMessages.push(lastMsg);
+      const prompt = await wllamaRef.current.formatChat(contextMessages, true);
+      let reply = '';
+      await wllamaRef.current.createCompletion(prompt, {
+        nPredict: 300,
+        sampling: { temp: 0.8 },
+        onNewToken: (t, p, currentText) => {
+          reply = currentText;
+          setStreamingBotText(currentText);
+        }
+      });
+      historyRef.current.push({ role: 'assistant', content: reply || '(empty response)' });
+      await maybeSummarizeOldMessages();
+      refreshMessagesView();
+      setStreamingBotText(null);
+      await saveMemory(userRef.current.uid);
+    } catch (err) {
+      setStreamingBotText('Error generating a reply: ' + err.message);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function handleInputKeyDown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }
+
+  // ---------- Render ----------
+  if (screen === 'auth') {
+    return h('div', { id: 'authScreen' },
+      h('div', { id: 'authTitle' }, 'Your Companion'),
+      h('div', { id: 'authSubtitle' }, isSignUpMode
+        ? 'Create an account to save your companion across devices.'
+        : 'Sign in to continue your conversations across devices.'),
+      h('input', {
+        type: 'email', placeholder: 'Email', autoComplete: 'email', maxLength: 254,
+        value: email, onChange: (e) => setEmail(e.target.value)
+      }),
+      h('input', {
+        type: 'password', placeholder: 'Password', autoComplete: 'current-password', maxLength: 128,
+        value: password, onChange: (e) => setPassword(e.target.value)
+      }),
+      h('div', { id: 'authError', style: { color: authErrorOk ? '#4ade80' : '#f87171' } }, authError),
+      h('button', { id: 'authSubmit', disabled: authBusy, onClick: handleAuthSubmit },
+        isSignUpMode ? 'Create Account' : 'Sign In'),
+      h('div', { id: 'orDivider' }, 'or'),
+      h('div', { id: 'googleBtnHost', ref: googleBtnHostRef }),
+      h('div', {
+        id: 'authToggle',
+        onClick: () => { setIsSignUpMode(!isSignUpMode); setAuthError(''); setAuthErrorOk(false); }
+      }, isSignUpMode ? 'Already have an account? ' : "Don't have an account? ",
+         h('span', null, isSignUpMode ? 'Sign in' : 'Sign up')),
+      h('div', { id: 'forgotPassword', onClick: handleForgotPassword }, 'Forgot password?'),
+      h('div', { id: 'tosNote' }, 'By continuing you agree to our ',
+        h('a', { href: 'TOS.md' }, 'Terms'), ' & ',
+        h('a', { href: 'PRIVACY.md' }, 'Privacy Policy'), '.')
+    );
+  }
+
+  const displayItems = [];
+  for (const m of messages) {
+    if (m.role === 'user') displayItems.push({ cls: 'user', text: m.content, key: 'u' + m._k });
+    else if (m.role === 'assistant') displayItems.push({ cls: 'bot', text: m.content, key: 'a' + m._k });
+  }
+  if (welcomeNotice) displayItems.push({ cls: 'sys', text: welcomeNotice, key: 'welcome' });
+  if (streamingBotText !== null) displayItems.push({ cls: 'bot', text: streamingBotText, key: 'streaming' });
+
+  return h('div', { id: 'chatScreen' },
+    h('div', { id: 'header' },
+      h('div', null,
+        h('div', { id: 'headerTitle' }, 'Your Companion'),
+        h('div', { id: 'status' }, statusText),
+        syncWarningVisible && h('div', { id: 'syncWarning' }, '⚠ Last message may not have synced. Check your connection.'),
+        loadBarVisible && h('div', { id: 'loadBar' }, h('div', { id: 'loadFill', style: { width: loadPct + '%' } })),
+        retryVisible && h('button', { id: 'retryBtn', onClick: () => initModel(1) }, 'Retry loading')
+      ),
+      h('div', { id: 'headerBtns' },
+        h('button', { id: 'accountBtn', onClick: () => setAccountOpen(true) }, 'Account'),
+        h('button', { id: 'signOutBtn', onClick: handleSignOut }, 'Sign out')
+      )
+    ),
+    h('div', { id: 'chat', ref: chatScrollRef },
+      displayItems.map(item => h('div', { className: 'msg ' + item.cls, key: item.key }, item.text))
+    ),
+    h('div', { id: 'inputBar' },
+      h('textarea', {
+        id: 'userInput', rows: 1,
+        placeholder: modelReadyRef.current ? 'Say something...' : 'Loading...',
+        disabled: !modelReadyRef.current || sending,
+        maxLength: MAX_INPUT_CHARS,
+        value: inputValue,
+        onChange: (e) => setInputValue(e.target.value),
+        onKeyDown: handleInputKeyDown
+      }),
+      h('button', { id: 'sendBtn', disabled: !modelReadyRef.current || sending, onClick: sendMessage }, '➤')
+    ),
+    accountOpen && h('div', {
+      id: 'accountModal',
+      onClick: (e) => { if (e.target.id === 'accountModal') setAccountOpen(false); }
+    },
+      h('div', { id: 'accountSheet' },
+        h('h3', null, 'Account'),
+        h('p', null, userRef.current ? ('Signed in as ' + userRef.current.email) : ''),
+        h('button', { className: 'sheetBtn', id: 'deleteAccountBtn', onClick: handleDeleteAccount }, 'Delete my account & data'),
+        h('p', null, 'This permanently deletes your conversation history and sign-in — it cannot be undone.'),
+        h('button', { id: 'closeSheetBtn', onClick: () => setAccountOpen(false) }, 'Close')
+      )
+    )
+  );
 }
 
-window.manualRetryLoad = function () {
-  initModel(1);
-};
-
-window.addEventListener('online', () => {
-  if (!modelReady && retryBtn.style.display === 'inline-block') {
-    initModel(1);
-  }
-});
-
-// Resuming from background (switching back into this tab/app) is the
-// other common trigger for a stuck failure state — the network was often
-// just briefly unavailable while the device woke up, not genuinely down.
-// If we're sitting on a failure when the app becomes visible again, retry
-// automatically instead of making the person tap the button.
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && !modelReady && retryBtn.style.display === 'inline-block') {
-    initModel(1);
-  }
-});
-
-// If a new service worker version has taken over (i.e. we just deployed a
-// fix), reload once automatically so the person is never stuck running
-// stale JS after a background/foreground cycle -- this is the other half
-// of the fix for the stale-CSP-after-resume bug.
-if ('serviceWorker' in navigator) {
-  let hasReloaded = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (hasReloaded) return;
-    hasReloaded = true;
-    location.reload();
-  });
-}
-
-window.sendMessage = async function () {
-  const now = Date.now();
-  if (now - lastSendTs < MIN_SEND_INTERVAL_MS) return;
-  const text = inputEl.value.trim().slice(0, MAX_INPUT_CHARS);
-  if (!text || !wllama || !modelReady || !currentUser) return;
-  lastSendTs = now;
-
-  inputEl.value = '';
-  inputEl.style.height = 'auto';
-  addMessage(text, 'user');
-  history.push({ role: 'user', content: text });
-
-  sendBtn.disabled = true;
-  inputEl.disabled = true;
-  const botDiv = addMessage('...', 'bot');
-
-  try {
-    const contextMessages = buildContextForModel();
-    if (!contextMessages.some(m => m === history[history.length - 1])) {
-      contextMessages.push(history[history.length - 1]);
-    }
-    const prompt = await wllama.formatChat(contextMessages, true);
-    let reply = '';
-    await wllama.createCompletion(prompt, {
-      nPredict: 300,
-      sampling: { temp: 0.8 },
-      onNewToken: (token, piece, currentText) => {
-        reply = currentText;
-        botDiv.textContent = currentText;
-        chatEl.scrollTop = chatEl.scrollHeight;
-      }
-    });
-    history.push({ role: 'assistant', content: reply || '(empty response)' });
-    await maybeSummarizeOldMessages();
-    await saveMemory(currentUser.uid);
-  } catch (err) {
-    botDiv.textContent = 'Error generating a reply: ' + err.message;
-  } finally {
-    sendBtn.disabled = false;
-    inputEl.disabled = false;
-    chatEl.scrollTop = chatEl.scrollHeight;
-  }
-};
-
-inputEl.addEventListener('input', () => {
-  inputEl.style.height = 'auto';
-  inputEl.style.height = Math.min(inputEl.scrollHeight, 100) + 'px';
-});
-inputEl.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendMessage();
-  }
-});
-
-// ---------- Auth state listener ----------
-onAuthStateChanged(auth, async (user) => {
-  if (user) {
-    currentUser = user;
-    authScreen.classList.add('hidden');
-    chatScreen.classList.add('visible');
-    await loadMemory(user.uid);
-    if (!wllama) await initModel();
-    else renderHistory();
-  } else {
-    currentUser = null;
-    modelReady = false;
-    authScreen.classList.remove('hidden');
-    chatScreen.classList.remove('visible');
-    accountModal.classList.remove('open');
-    emailInput.value = '';
-    passwordInput.value = '';
-  }
-});
-
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
-  });
-}
+createRoot(document.getElementById('root')).render(h(App));
 </script>
 </body>
 </html>
