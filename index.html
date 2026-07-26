@@ -163,7 +163,7 @@
     <div id="header">
       <div>
         <div id="headerTitle">Your Companion</div>
-        <div id="status">Loading model...</div>
+        <div id="status">Loading model (~1GB, one-time)...</div>
         <div id="loadBar"><div id="loadFill"></div></div>
       </div>
       <button id="signOutBtn" onclick="handleSignOut()">Sign out</button>
@@ -180,7 +180,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/fireba
 import {
   getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
   onAuthStateChanged, signOut, sendPasswordResetEmail,
-  GoogleAuthProvider, signInWithRedirect, getRedirectResult
+  GoogleAuthProvider, signInWithPopup
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc
@@ -217,7 +217,7 @@ const sendBtn = document.getElementById('sendBtn');
 const statusEl = document.getElementById('status');
 const loadFill = document.getElementById('loadFill');
 
-const MODEL_URL = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf";
+const MODEL_URL = "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf";
 const CONFIG_PATHS = {
   'single-thread/wllama.wasm': "https://cdn.jsdelivr.net/npm/@wllama/wllama@2/esm/single-thread/wllama.wasm",
   'multi-thread/wllama.wasm': "https://cdn.jsdelivr.net/npm/@wllama/wllama@2/esm/multi-thread/wllama.wasm",
@@ -300,23 +300,18 @@ window.handleForgotPassword = async function () {
 };
 
 window.handleGoogleSignIn = async function () {
+  authError.style.color = '';
   authError.textContent = '';
   const provider = new GoogleAuthProvider();
   try {
-    await signInWithRedirect(auth, provider);
-    // Page will redirect to Google, then back here.
-    // getRedirectResult() below (run on load) picks it up.
+    await signInWithPopup(auth, provider);
+    // onAuthStateChanged takes it from here
   } catch (err) {
-    authError.textContent = friendlyAuthError(err.code) || 'Google sign-in failed. Please try again.';
+    if (err.code !== 'auth/popup-closed-by-user') {
+      authError.textContent = (friendlyAuthError(err.code) || 'Google sign-in failed.') + ' (' + err.code + ')';
+    }
   }
 };
-
-// Handle the return trip from Google's sign-in redirect
-getRedirectResult(auth).catch((err) => {
-  if (err && err.code) {
-    authError.textContent = friendlyAuthError(err.code);
-  }
-});
 
 // ---------- Chat UI helpers ----------
 function addMessage(text, cls) {
