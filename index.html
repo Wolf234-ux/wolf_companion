@@ -385,15 +385,17 @@ window.handleGoogleSignIn = async function () {
   try {
     await signInWithPopup(auth, provider);
   } catch (err) {
-    if (err.code === 'auth/popup-closed-by-user') return;
-    if (err.code === 'auth/popup-blocked' || err.code === 'auth/operation-not-supported-in-this-environment' || err.code === 'auth/cancelled-popup-request') {
-      try {
-        await signInWithRedirect(auth, provider);
-      } catch (err2) {
-        authError.textContent = friendlyAuthError(err2.code) + ' (' + err2.code + ')';
-      }
-    } else {
-      authError.textContent = friendlyAuthError(err.code) + ' (' + err.code + ')';
+    // Only these two mean the user deliberately backed out — don't retry.
+    if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') return;
+    // Everything else (including the generic 'auth/internal-error' that
+    // mobile browsers throw when a popup's postMessage channel breaks,
+    // which is far more common in practice than the specific
+    // 'auth/popup-blocked' code) falls back to redirect rather than
+    // dead-ending the user on a raw error.
+    try {
+      await signInWithRedirect(auth, provider);
+    } catch (err2) {
+      authError.textContent = friendlyAuthError(err2.code) + ' (' + err2.code + ')';
     }
   }
 };
