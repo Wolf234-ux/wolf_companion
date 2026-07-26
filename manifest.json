@@ -2,7 +2,7 @@
   "name": "Your Companion",
   "short_name": "Companion",
   "description": "A local, private AI companion that runs entirely on your device.",
-  "start_url": "./chat.html",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0d0f14",
   "theme_color": "#14161c",
