@@ -1,0 +1,35 @@
+rules_version = '2';
+
+// These rules must be kept in sync with what's published in the
+// Firebase Console (Firestore Database -> Rules). This file exists so the
+// security posture is version-controlled and reviewable, not just a
+// console-only setting nobody can diff.
+//
+// Deploy with the Firebase CLI: `firebase deploy --only firestore:rules`
+// (requires `firebase init` once, or paste this file's contents directly
+// into the Console's rules editor).
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // One document per user, keyed by their Firebase Auth uid.
+    // Only that exact signed-in user may read or write their own document.
+    // Every other path is denied by default (Firestore denies unmatched
+    // paths automatically).
+    match /conversations/{userId} {
+      allow read: if request.auth != null
+                  && request.auth.uid == userId;
+
+      // Defensive cap: even a compromised/buggy client can't write a
+      // single document larger than ~900KB (Firestore's hard limit is
+      // 1MiB/doc). This is a backstop only -- the app itself keeps
+      // history well under this by capping raw messages client-side.
+      allow write: if request.auth != null
+                   && request.auth.uid == userId
+                   && request.resource.size() < 900000;
+
+      allow delete: if request.auth != null
+                    && request.auth.uid == userId;
+    }
+  }
+}
